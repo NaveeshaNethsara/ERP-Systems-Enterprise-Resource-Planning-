@@ -1,0 +1,314 @@
+<section class="page-header">
+  <div class="page-title-group">
+    <span class="eyebrow">Global Freight &amp; Network Nodes</span>
+    <h1>Supply Chain Management</h1>
+    <p>Track multi-modal shipments, customs clearance milestones, and warehouse dock capacity.</p>
+  </div>
+  <div class="page-actions">
+    <button type="button" class="btn btn-primary" (click)="createModalOpen.set(true)">
+      <app-erp-icon name="plus" [size]="16" />
+      Dispatch Shipment
+    </button>
+  </div>
+</section>
+
+<section class="kpi-grid">
+  <app-kpi-card
+    label="Active Shipments"
+    [value]="store.supplyChainStats().activeShipmentsCount.toString()"
+    icon="supply-chain"
+    tone="info"
+    [hint]="store.supplyChainStats().deliveredCount + ' delivered this cycle'"
+  />
+  <app-kpi-card
+    label="On-Time Delivery Rate"
+    [value]="(store.supplyChainStats().onTimeRatePct | number:'1.1-1') + '%'"
+    icon="check"
+    tone="success"
+    hint="Target SLA >= 94.0%"
+  />
+  <app-kpi-card
+    label="Delayed / Customs Holds"
+    [value]="store.supplyChainStats().delayedCount.toString()"
+    icon="alert"
+    [tone]="store.supplyChainStats().delayedCount > 0 ? 'danger' : 'success'"
+    hint="Active route exceptions"
+  />
+  <app-kpi-card
+    label="Freight Spend MTD"
+    [value]="(store.supplyChainStats().freightSpendMtd | currency:'USD':'symbol':'1.0-0') ?? '$0'"
+    icon="finance"
+    tone="neutral"
+    hint="Ocean, air, rail &amp; LTL"
+  />
+</section>
+
+<nav class="erp-tabs" aria-label="Supply Chain views">
+  <button type="button" class="erp-tab" [class.active]="activeTab() === 'shipments'" (click)="activeTab.set('shipments')">
+    Live Shipment Tracker
+    <span class="tab-count num">{{ store.shipments().length }}</span>
+  </button>
+  <button type="button" class="erp-tab" [class.active]="activeTab() === 'hubs'" (click)="activeTab.set('hubs')">
+    Distribution Hubs &amp; Capacity
+    <span class="tab-count num">{{ store.hubs().length }}</span>
+  </button>
+</nav>
+
+@if (activeTab() === 'shipments') {
+  <section class="erp-card">
+    <div class="filter-bar">
+      <div class="filter-controls">
+        <div class="search-input-wrap">
+          <span class="search-icon"><app-erp-icon name="search" [size]="15" /></span>
+          <input
+            type="text"
+            [ngModel]="searchQuery()"
+            (ngModelChange)="searchQuery.set($event)"
+            placeholder="Search tracking ID, carrier, lane, or PO#..."
+          />
+        </div>
+
+        <select class="erp-select" [ngModel]="modeFilter()" (ngModelChange)="modeFilter.set($event)" aria-label="Filter freight mode">
+          <option value="All">All Freight Modes</option>
+          @for (m of modes; track m) {
+            <option [value]="m">{{ m }}</option>
+          }
+        </select>
+
+        <select class="erp-select" [ngModel]="stageFilter()" (ngModelChange)="stageFilter.set($event)" aria-label="Filter shipment stage">
+          <option value="All">All Stages</option>
+          <option value="Delayed">Exceptions / Delayed</option>
+          @for (st of stages; track st) {
+            <option [value]="st">{{ st }}</option>
+          }
+        </select>
+      </div>
+      <span class="result-count num">{{ filteredShipments().length }} shipments</span>
+    </div>
+
+    <div class="shipment-list">
+      @if (filteredShipments().length === 0) {
+        <div class="empty-state">
+          <strong>No shipments match filters</strong>
+          <p>Reset freight mode or stage filters to view active lanes.</p>
+        </div>
+      }
+
+      @for (shp of filteredShipments(); track shp.id) {
+        @let curIdx = stageIndex(shp.stage);
+        <article class="shipment-row" (click)="selectedShipmentId.set(shp.id)">
+          <div class="shp-head">
+            <div class="shp-id-group">
+              <span class="mono shp-code">{{ shp.trackingId }}</span>
+              <strong>{{ shp.carrier }}</strong>
+              <span class="mode-tag">{{ shp.mode }} • {{ shp.incoterms }}</span>
+              @if (shp.linkedPoNumber) {
+                <span class="po-ref mono">{{ shp.linkedPoNumber }}</span>
+              }
+            </div>
+            <div class="shp-status-group" (click)="$event.stopPropagation()">
+              @if (shp.delayed) {
+                <app-status-badge label="Delayed" />
+              }
+              <app-status-badge [label]="shp.stage" />
+              @if (shp.stage !== 'Delivered') {
+                <button type="button" class="btn btn-secondary btn-sm" (click)="store.advanceShipment(shp.id)">
+                  Advance Stage
+                </button>
+              }
+            </div>
+          </div>
+
+          <div class="shp-lane">
+            <span class="lane-route">{{ shp.origin }} → <strong>{{ shp.destination }}</strong></span>
+            <span class="lane-meta num">ETA: <span class="mono">{{ shp.eta }}</span> • {{ shp.weightKg.toLocaleString() }} kg • {{ shp.freightCost | currency:'USD':'symbol':'1.0-0' }}</span>
+          </div>
+
+          @if (shp.delayed && shp.delayReason) {
+            <div class="delay-banner">
+              <app-erp-icon name="alert" [size]="14" />
+              <span>{{ shp.delayReason }}</span>
+            </div>
+          }
+
+          <div class="milestone-track" aria-label="Shipment milestones">
+            @for (step of stages; track step; let idx = $index) {
+              <div class="milestone-step" [class.done]="idx <= curIdx" [class.current]="idx === curIdx" [class.alert]="shp.delayed && idx === curIdx">
+                <span class="step-dot"></span>
+                <span class="step-name">{{ step }}</span>
+              </div>
+            }
+          </div>
+        </article>
+      }
+    </div>
+  </section>
+}
+
+@if (activeTab() === 'hubs') {
+  <section class="hubs-grid">
+    @for (hub of store.hubs(); track hub.name) {
+      <article class="erp-card hub-card">
+        <div class="hub-head">
+          <div>
+            <span class="hub-region">{{ hub.region }}</span>
+            <h3>{{ hub.name }}</h3>
+          </div>
+          <app-status-badge [label]="hub.health" />
+        </div>
+
+        <div class="hub-cap">
+          <div class="cap-row">
+            <span>Storage Capacity Utilization</span>
+            <strong class="num">{{ hub.capacityPct }}%</strong>
+          </div>
+          <div class="cap-track">
+            <div class="cap-fill" [class.high]="hub.capacityPct >= 90" [style.width.%]="hub.capacityPct"></div>
+          </div>
+        </div>
+
+        <div class="hub-metrics">
+          <div>
+            <span>Dock Doors</span>
+            <strong class="num">{{ hub.activeDockDoors }} / {{ hub.totalDockDoors }}</strong>
+          </div>
+          <div>
+            <span>Inbound Active</span>
+            <strong class="num">{{ hub.inboundShipments }}</strong>
+          </div>
+          <div>
+            <span>Outbound Today</span>
+            <strong class="num">{{ hub.outboundOrdersToday }}</strong>
+          </div>
+        </div>
+      </article>
+    }
+  </section>
+}
+
+<!-- Shipment Detail Drawer -->
+<app-slide-drawer
+  [open]="selectedShipment() !== null"
+  [title]="selectedShipment()?.trackingId ?? ''"
+  [subtitle]="selectedShipment() ? selectedShipment()!.carrier + ' • ' + selectedShipment()!.mode : ''"
+  (closed)="selectedShipmentId.set(null)"
+>
+  @if (selectedShipment(); as shp) {
+    <div class="drawer-kv-grid">
+      <div class="kv-box">
+        <span>Route</span>
+        <strong>{{ shp.origin }} → {{ shp.destination }}</strong>
+      </div>
+      <div class="kv-box">
+        <span>Expected Arrival</span>
+        <strong class="mono">{{ shp.eta }}</strong>
+      </div>
+      <div class="kv-box">
+        <span>Gross Weight</span>
+        <strong class="num">{{ shp.weightKg.toLocaleString() }} kg</strong>
+      </div>
+      <div class="kv-box">
+        <span>Freight &amp; Incoterms</span>
+        <strong class="num">{{ shp.freightCost | currency:'USD':'symbol':'1.0-0' }} ({{ shp.incoterms }})</strong>
+      </div>
+    </div>
+
+    <div class="timeline-block">
+      <h4>Transit Milestone Log</h4>
+      <div class="timeline-list">
+        @for (m of shp.milestones; track m.stage) {
+          <div class="tl-item" [class.completed]="m.completed">
+            <span class="tl-marker"></span>
+            <div class="tl-content">
+              <div class="tl-top">
+                <strong>{{ m.stage }}</strong>
+                <span class="mono">{{ m.timestamp }}</span>
+              </div>
+              <span>{{ m.location }}</span>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+
+    @if (shp.stage !== 'Delivered') {
+      <div class="exception-box">
+        <label for="delay-reason">Flag Exception / Delay Reason</label>
+        <div class="exception-row">
+          <input id="delay-reason" type="text" class="erp-input" [(ngModel)]="delayReasonInput" />
+          <button type="button" class="btn btn-danger-soft btn-sm" (click)="flagDelay(shp)">
+            Flag Hold
+          </button>
+        </div>
+      </div>
+    }
+  }
+  @if (selectedShipment(); as shp) {
+    <ng-container drawer-footer>
+      <button type="button" class="btn btn-secondary" (click)="selectedShipmentId.set(null)">Close</button>
+      @if (shp.stage !== 'Delivered') {
+        <button type="button" class="btn btn-primary" (click)="store.advanceShipment(shp.id)">
+          Advance Milestone
+        </button>
+      }
+    </ng-container>
+  }
+</app-slide-drawer>
+
+<!-- Dispatch Shipment Modal -->
+<app-modal-dialog
+  [open]="createModalOpen()"
+  title="Dispatch Freight Shipment"
+  description="Create a tracked logistics consignment across Meridian hubs or customer destinations."
+  (closed)="createModalOpen.set(false)"
+>
+  <form class="form-grid" (ngSubmit)="submitNewShipment()">
+    <div class="form-field">
+      <label for="shp-carrier">Carrier *</label>
+      <input id="shp-carrier" name="carrier" required class="erp-input" [(ngModel)]="newShipment.carrier" />
+    </div>
+    <div class="form-field">
+      <label for="shp-mode">Freight Mode</label>
+      <select id="shp-mode" name="mode" class="erp-select" [(ngModel)]="newShipment.mode">
+        @for (m of modes; track m) {
+          <option [value]="m">{{ m }}</option>
+        }
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="shp-origin">Origin *</label>
+      <input id="shp-origin" name="origin" required class="erp-input" [(ngModel)]="newShipment.origin" />
+    </div>
+    <div class="form-field">
+      <label for="shp-dest">Destination Hub</label>
+      <select id="shp-dest" name="destination" class="erp-select" [(ngModel)]="newShipment.destination">
+        @for (wh of warehouses; track wh) {
+          <option [value]="wh">{{ wh }}</option>
+        }
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="shp-eta">ETA</label>
+      <input id="shp-eta" name="eta" type="date" class="erp-input mono" [(ngModel)]="newShipment.eta" />
+    </div>
+    <div class="form-field">
+      <label for="shp-po">Linked PO # (Optional)</label>
+      <input id="shp-po" name="linkedPoNumber" class="erp-input mono" [(ngModel)]="newShipment.linkedPoNumber" placeholder="PO-2026-088" />
+    </div>
+    <div class="form-field">
+      <label for="shp-wt">Weight (kg)</label>
+      <input id="shp-wt" name="weightKg" type="number" min="1" class="erp-input num" [(ngModel)]="newShipment.weightKg" />
+    </div>
+    <div class="form-field">
+      <label for="shp-cost">Freight Cost (USD)</label>
+      <input id="shp-cost" name="freightCost" type="number" min="50" class="erp-input num" [(ngModel)]="newShipment.freightCost" />
+    </div>
+
+    <div class="modal-actions full">
+      <button type="button" class="btn btn-secondary" (click)="createModalOpen.set(false)">Cancel</button>
+      <button type="submit" class="btn btn-primary" [disabled]="!newShipment.carrier.trim() || !newShipment.origin.trim()">
+        Create Consignment
+      </button>
+    </div>
+  </form>
+</app-modal-dialog>

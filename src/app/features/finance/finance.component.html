@@ -1,0 +1,269 @@
+<section class="page-header">
+  <div class="page-title-group">
+    <span class="eyebrow">Treasury, AP/AR &amp; General Ledger</span>
+    <h1>Finance &amp; Accounting</h1>
+    <p>Double-entry journal register, receivables/payables settlement, and real-time trial balance.</p>
+  </div>
+  <div class="page-actions">
+    <button type="button" class="btn btn-primary" (click)="entryModalOpen.set(true)">
+      <app-erp-icon name="plus" [size]="16" />
+      Post Journal Entry
+    </button>
+  </div>
+</section>
+
+<section class="kpi-grid">
+  <app-kpi-card
+    label="Cash on Hand (GL 1010)"
+    [value]="(store.financeStats().cashOnHand | currency:'USD':'symbol':'1.0-0') ?? '$0'"
+    icon="finance"
+    tone="success"
+    [trend]="(store.financeStats().netMarginPct | number:'1.1-1') + '% margin'"
+    trendDirection="up"
+    hint="Operating treasury balance"
+  />
+  <app-kpi-card
+    label="Accounts Receivable"
+    [value]="(store.financeStats().accountsReceivable | currency:'USD':'symbol':'1.0-0') ?? '$0'"
+    icon="arrow-down-right"
+    tone="info"
+    hint="Open customer invoices"
+  />
+  <app-kpi-card
+    label="Accounts Payable"
+    [value]="(store.financeStats().accountsPayable | currency:'USD':'symbol':'1.0-0') ?? '$0'"
+    icon="arrow-up-right"
+    [tone]="store.financeStats().overdueCount > 0 ? 'warning' : 'neutral'"
+    [hint]="store.financeStats().overdueCount + ' overdue item(s)'"
+  />
+  <app-kpi-card
+    label="Nov Operating Revenue"
+    [value]="(store.financeStats().monthlyRevenue | currency:'USD':'symbol':'1.0-0') ?? '$0'"
+    icon="dashboard"
+    tone="success"
+    [hint]="'OpEx ' + ((store.financeStats().monthlyExpenses | currency:'USD':'symbol':'1.0-0') ?? '$0')"
+  />
+</section>
+
+<nav class="erp-tabs" aria-label="Finance views">
+  <button type="button" class="erp-tab" [class.active]="activeTab() === 'ledger'" (click)="activeTab.set('ledger')">
+    General Ledger
+    <span class="tab-count num">{{ store.transactions().length }}</span>
+  </button>
+  <button type="button" class="erp-tab" [class.active]="activeTab() === 'invoices'" (click)="activeTab.set('invoices')">
+    Invoices (AR / AP)
+    <span class="tab-count num">{{ store.invoices().length }}</span>
+  </button>
+  <button type="button" class="erp-tab" [class.active]="activeTab() === 'accounts'" (click)="activeTab.set('accounts')">
+    Chart of Accounts
+    <span class="tab-count num">{{ store.glAccounts().length }}</span>
+  </button>
+</nav>
+
+@if (activeTab() === 'ledger') {
+  <section class="erp-card">
+    <div class="filter-bar">
+      <div class="filter-controls">
+        <div class="search-input-wrap">
+          <span class="search-icon"><app-erp-icon name="search" [size]="15" /></span>
+          <input
+            type="text"
+            [ngModel]="txnSearch()"
+            (ngModelChange)="txnSearch.set($event)"
+            placeholder="Search reference, GL code, or counterparty..."
+          />
+        </div>
+        <select class="erp-select" [ngModel]="txnTypeFilter()" (ngModelChange)="txnTypeFilter.set($event)" aria-label="Filter by entry type">
+          <option value="All">All Entry Types</option>
+          <option value="Income">Income</option>
+          <option value="Expense">Expense</option>
+          <option value="Journal">Journal</option>
+        </select>
+      </div>
+      <span class="result-count num">{{ filteredTransactions().length }} entries</span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Reference</th>
+            <th scope="col">Description &amp; Counterparty</th>
+            <th scope="col">GL Account</th>
+            <th scope="col">Type</th>
+            <th scope="col" class="text-right">Amount</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (txn of filteredTransactions(); track txn.id) {
+            <tr>
+              <td class="mono">{{ txn.date }}</td>
+              <td><span class="mono ref-code">{{ txn.reference }}</span></td>
+              <td>
+                <div class="txn-desc">
+                  <strong>{{ txn.description }}</strong>
+                  <span>{{ txn.counterparty }}</span>
+                </div>
+              </td>
+              <td>
+                <span class="gl-pill mono">{{ txn.glAccountCode }}</span>
+                <span class="gl-name"> {{ txn.glAccountName }}</span>
+              </td>
+              <td><app-status-badge [label]="txn.type" /></td>
+              <td class="text-right num">
+                <strong [class]="txn.type === 'Income' ? 'amt-in' : txn.type === 'Expense' ? 'amt-out' : ''">
+                  {{ txn.type === 'Expense' ? '-' : txn.type === 'Income' ? '+' : '' }}{{ txn.amount | currency:'USD':'symbol':'1.0-0' }}
+                </strong>
+              </td>
+              <td><app-status-badge [label]="txn.status" /></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+}
+
+@if (activeTab() === 'invoices') {
+  <section class="erp-card">
+    <div class="filter-bar">
+      <div class="filter-controls">
+        <select class="erp-select" [ngModel]="invoiceKindFilter()" (ngModelChange)="invoiceKindFilter.set($event)" aria-label="Filter by receivable or payable">
+          <option value="All">All Invoices (AR &amp; AP)</option>
+          <option value="Receivable">Accounts Receivable (Customer)</option>
+          <option value="Payable">Accounts Payable (Vendor)</option>
+        </select>
+        <select class="erp-select" [ngModel]="invoiceStatusFilter()" (ngModelChange)="invoiceStatusFilter.set($event)" aria-label="Filter by invoice status">
+          <option value="All">All Statuses</option>
+          <option value="Open">Open</option>
+          <option value="Overdue">Overdue</option>
+          <option value="Paid">Paid</option>
+        </select>
+      </div>
+      <span class="result-count num">{{ filteredInvoices().length }} documents</span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th scope="col">Document #</th>
+            <th scope="col">Kind</th>
+            <th scope="col">Counterparty</th>
+            <th scope="col">Linked Ref</th>
+            <th scope="col">Due Date</th>
+            <th scope="col" class="text-right">Amount</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="text-right">Settlement</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (inv of filteredInvoices(); track inv.id) {
+            <tr>
+              <td><span class="mono ref-code">{{ inv.invoiceNumber }}</span></td>
+              <td><app-status-badge [label]="inv.kind" /></td>
+              <td><strong>{{ inv.counterparty }}</strong></td>
+              <td><span class="mono">{{ inv.linkedRef }}</span></td>
+              <td class="mono">{{ inv.dueDate }}</td>
+              <td class="text-right num"><strong>{{ inv.amount | currency:'USD':'symbol':'1.0-0' }}</strong></td>
+              <td><app-status-badge [label]="inv.status" /></td>
+              <td class="text-right">
+                @if (inv.status !== 'Paid') {
+                  <button type="button" class="btn btn-primary btn-sm" (click)="store.markInvoicePaid(inv.id)">
+                    {{ inv.kind === 'Receivable' ? 'Record Payment' : 'Pay Bill' }}
+                  </button>
+                } @else {
+                  <span class="settled-label">Settled</span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+}
+
+@if (activeTab() === 'accounts') {
+  <section class="erp-card">
+    <div class="erp-card-header">
+      <div>
+        <h2>Chart of Accounts — Live Trial Balances</h2>
+        <div class="card-subtitle">Balances synchronize automatically when journal entries, invoices, or POs are settled</div>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th scope="col">GL Code</th>
+            <th scope="col">Account Name</th>
+            <th scope="col">Account Classification</th>
+            <th scope="col" class="text-right">Current Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (acc of store.glAccounts(); track acc.code) {
+            <tr>
+              <td><span class="mono gl-pill">{{ acc.code }}</span></td>
+              <td><strong>{{ acc.name }}</strong></td>
+              <td><app-status-badge [label]="acc.type" /></td>
+              <td class="text-right num"><strong>{{ acc.balance | currency:'USD':'symbol':'1.0-0' }}</strong></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+}
+
+<!-- Post Journal Entry Modal -->
+<app-modal-dialog
+  [open]="entryModalOpen()"
+  title="Post General Ledger Entry"
+  description="Record a transaction directly to the general ledger and update cash & account balances."
+  (closed)="entryModalOpen.set(false)"
+>
+  <form class="form-grid" (ngSubmit)="submitJournalEntry()">
+    <div class="form-field">
+      <label for="txn-type">Entry Type</label>
+      <select id="txn-type" name="type" class="erp-select" [(ngModel)]="newEntry.type">
+        <option value="Income">Income (Cash Inflow)</option>
+        <option value="Expense">Expense (Cash Outflow)</option>
+        <option value="Journal">Internal Journal Allocation</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="txn-gl">GL Account</label>
+      <select id="txn-gl" name="glAccountCode" class="erp-select" [(ngModel)]="newEntry.glAccountCode">
+        @for (acc of store.glAccounts(); track acc.code) {
+          <option [value]="acc.code">{{ acc.code }} — {{ acc.name }}</option>
+        }
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="txn-ref">Reference Code</label>
+      <input id="txn-ref" name="reference" class="erp-input mono" [(ngModel)]="newEntry.reference" placeholder="Auto-generated if blank" />
+    </div>
+    <div class="form-field">
+      <label for="txn-amt">Amount (USD) *</label>
+      <input id="txn-amt" name="amount" type="number" min="1" required class="erp-input num" [(ngModel)]="newEntry.amount" />
+    </div>
+    <div class="form-field full">
+      <label for="txn-cp">Counterparty *</label>
+      <input id="txn-cp" name="counterparty" required class="erp-input" [(ngModel)]="newEntry.counterparty" placeholder="e.g. Siemens Motion Control Inc." />
+    </div>
+    <div class="form-field full">
+      <label for="txn-desc">Description *</label>
+      <input id="txn-desc" name="description" required class="erp-input" [(ngModel)]="newEntry.description" placeholder="e.g. Q4 OEM Actuator Milestone Billing" />
+    </div>
+    <div class="modal-actions full">
+      <button type="button" class="btn btn-secondary" (click)="entryModalOpen.set(false)">Cancel</button>
+      <button type="submit" class="btn btn-primary" [disabled]="!newEntry.description.trim() || !newEntry.counterparty.trim()">
+        Post to Ledger
+      </button>
+    </div>
+  </form>
+</app-modal-dialog>

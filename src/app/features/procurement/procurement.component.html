@@ -1,0 +1,298 @@
+<section class="page-header">
+  <div class="page-title-group">
+    <span class="eyebrow">Strategic Sourcing &amp; Requisitions</span>
+    <h1>Procurement</h1>
+    <p>Orchestrate purchase order approvals, vendor issuance, and goods receipt syncing with Inventory &amp; AP.</p>
+  </div>
+  <div class="page-actions">
+    <button type="button" class="btn btn-primary" (click)="createModalOpen.set(true)">
+      <app-erp-icon name="plus" [size]="16" />
+      Create Purchase Order
+    </button>
+  </div>
+</section>
+
+<section class="kpi-grid">
+  <app-kpi-card
+    label="Open PO Commitments"
+    [value]="(store.procurementStats().openPoValue | currency:'USD':'symbol':'1.0-0') ?? '$0'"
+    icon="procurement"
+    tone="info"
+    [hint]="store.procurementStats().openPoCount + ' open orders'"
+  />
+  <app-kpi-card
+    label="Pending Approvals"
+    [value]="store.procurementStats().pendingApprovalsCount.toString()"
+    icon="clock"
+    [tone]="store.procurementStats().pendingApprovalsCount > 0 ? 'warning' : 'success'"
+    hint="Requiring sign-off"
+  />
+  <app-kpi-card
+    label="Approved Suppliers"
+    [value]="store.procurementStats().activeVendorsCount.toString()"
+    icon="building"
+    tone="success"
+    hint="Active master agreements"
+  />
+  <app-kpi-card
+    label="Avg Supplier Lead Time"
+    [value]="(store.procurementStats().avgLeadTimeDays | number:'1.1-1') + ' days'"
+    icon="truck"
+    tone="neutral"
+    hint="Across domestic &amp; global vendors"
+  />
+</section>
+
+<nav class="erp-tabs" aria-label="Procurement views">
+  <button type="button" class="erp-tab" [class.active]="activeTab() === 'orders'" (click)="activeTab.set('orders')">
+    Purchase Orders
+    <span class="tab-count num">{{ store.purchaseOrders().length }}</span>
+  </button>
+  <button type="button" class="erp-tab" [class.active]="activeTab() === 'vendors'" (click)="activeTab.set('vendors')">
+    Vendor Directory
+    <span class="tab-count num">{{ store.vendors().length }}</span>
+  </button>
+</nav>
+
+@if (activeTab() === 'orders') {
+  <section class="erp-card">
+    <div class="filter-bar">
+      <div class="filter-controls">
+        <div class="search-input-wrap">
+          <span class="search-icon"><app-erp-icon name="search" [size]="15" /></span>
+          <input
+            type="text"
+            [ngModel]="searchQuery()"
+            (ngModelChange)="searchQuery.set($event)"
+            placeholder="Search PO number, vendor, or SKU..."
+          />
+        </div>
+        <select class="erp-select" [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event)" aria-label="Filter PO status">
+          <option value="All">All PO Statuses</option>
+          @for (st of poStatuses; track st) {
+            <option [value]="st">{{ st }}</option>
+          }
+        </select>
+      </div>
+      <span class="result-count num">{{ filteredPos().length }} orders</span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th scope="col">PO Number</th>
+            <th scope="col">Vendor</th>
+            <th scope="col">Line Items</th>
+            <th scope="col">Destination</th>
+            <th scope="col">Expected</th>
+            <th scope="col" class="text-right">Total Value</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="text-right">Workflow Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (filteredPos().length === 0) {
+            <tr>
+              <td colspan="8">
+                <div class="empty-state">
+                  <strong>No purchase orders match filters</strong>
+                  <p>Adjust your search or status filter.</p>
+                </div>
+              </td>
+            </tr>
+          }
+          @for (po of filteredPos(); track po.id) {
+            @let action = nextActionFor(po);
+            <tr class="clickable" (click)="selectedPoId.set(po.id)">
+              <td><span class="mono po-code">{{ po.poNumber }}</span></td>
+              <td><strong>{{ po.vendorName }}</strong></td>
+              <td>
+                @for (line of po.lines; track line.sku) {
+                  <div class="po-line-mini">
+                    <span class="mono">{{ line.sku }}</span> • <span class="num">{{ line.quantity }}</span> units
+                  </div>
+                }
+              </td>
+              <td>{{ po.destination }}</td>
+              <td class="mono">{{ po.expectedDate }}</td>
+              <td class="text-right num"><strong>{{ po.totalAmount | currency:'USD':'symbol':'1.0-0' }}</strong></td>
+              <td><app-status-badge [label]="po.status" /></td>
+              <td class="text-right" (click)="$event.stopPropagation()">
+                @if (action) {
+                  <button
+                    type="button"
+                    class="btn btn-sm"
+                    [class.btn-primary]="po.status === 'Pending Approval' || po.status === 'Ordered'"
+                    [class.btn-secondary]="po.status !== 'Pending Approval' && po.status !== 'Ordered'"
+                    (click)="store.advancePurchaseOrder(po.id, action.next)"
+                  >
+                    {{ action.label }}
+                  </button>
+                } @else {
+                  <span class="done-muted">Stocked &amp; Billed</span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+}
+
+@if (activeTab() === 'vendors') {
+  <section class="vendor-grid">
+    @for (v of store.vendors(); track v.id) {
+      <article class="erp-card vendor-card">
+        <div class="vendor-head">
+          <div>
+            <span class="mono vendor-code">{{ v.code }} • {{ v.country }}</span>
+            <h3>{{ v.name }}</h3>
+            <span class="vendor-cat">{{ v.category }}</span>
+          </div>
+          <span class="rating-pill num">★ {{ v.rating | number:'1.1-1' }}</span>
+        </div>
+
+        <div class="vendor-stats">
+          <div>
+            <span>On-Time Delivery</span>
+            <strong class="num">{{ v.onTimeRate | number:'1.1-1' }}%</strong>
+          </div>
+          <div>
+            <span>Lead Time</span>
+            <strong class="num">{{ v.avgLeadTimeDays }} days</strong>
+          </div>
+          <div>
+            <span>Payment Terms</span>
+            <strong>{{ v.paymentTerms }}</strong>
+          </div>
+          <div>
+            <span>Spend YTD</span>
+            <strong class="num">{{ v.spendYtd | currency:'USD':'symbol':'1.0-0' }}</strong>
+          </div>
+        </div>
+
+        <div class="vendor-footer">
+          <span>{{ v.contactName }} ({{ v.email }})</span>
+        </div>
+      </article>
+    }
+  </section>
+}
+
+<!-- Purchase Order Detail Drawer -->
+<app-slide-drawer
+  [open]="selectedPo() !== null"
+  [title]="selectedPo()?.poNumber ?? ''"
+  [subtitle]="selectedPo() ? selectedPo()!.vendorName + ' → ' + selectedPo()!.destination : ''"
+  (closed)="selectedPoId.set(null)"
+>
+  @if (selectedPo(); as po) {
+    <div class="drawer-kv-grid">
+      <div class="kv-box">
+        <span>Status</span>
+        <div class="mt-4"><app-status-badge [label]="po.status" /></div>
+      </div>
+      <div class="kv-box">
+        <span>Total PO Amount</span>
+        <strong class="num">{{ po.totalAmount | currency:'USD':'symbol':'1.2-2' }}</strong>
+      </div>
+      <div class="kv-box">
+        <span>Created Date</span>
+        <strong class="mono">{{ po.createdDate }}</strong>
+      </div>
+      <div class="kv-box">
+        <span>Expected Arrival</span>
+        <strong class="mono">{{ po.expectedDate }}</strong>
+      </div>
+    </div>
+
+    <div class="drawer-block">
+      <h4>Line Items</h4>
+      <div class="lines-box">
+        @for (line of po.lines; track line.sku) {
+          <div class="line-row">
+            <div>
+              <span class="mono">{{ line.sku }}</span>
+              <strong>{{ line.itemName }}</strong>
+              <span class="line-calc num">{{ line.quantity }} × {{ line.unitCost | currency:'USD':'symbol':'1.2-2' }}</span>
+            </div>
+            <strong class="num">{{ (line.quantity * line.unitCost) | currency:'USD':'symbol':'1.2-2' }}</strong>
+          </div>
+        }
+      </div>
+    </div>
+
+    <div class="drawer-block">
+      <h4>Procurement Notes</h4>
+      <p class="notes-box">{{ po.notes || 'Standard supplier purchase terms apply.' }}</p>
+    </div>
+  }
+  @if (selectedPo(); as po) {
+    <ng-container drawer-footer>
+      <button type="button" class="btn btn-secondary" (click)="selectedPoId.set(null)">Close</button>
+      @if (nextActionFor(po); as action) {
+        <button type="button" class="btn btn-primary" (click)="store.advancePurchaseOrder(po.id, action.next)">
+          {{ action.label }}
+        </button>
+      }
+    </ng-container>
+  }
+</app-slide-drawer>
+
+<!-- Create Purchase Order Modal -->
+<app-modal-dialog
+  [open]="createModalOpen()"
+  title="Create Purchase Order"
+  description="Submit a new vendor requisition. Approved orders automatically generate inbound tracking."
+  (closed)="createModalOpen.set(false)"
+>
+  <form class="form-grid" (ngSubmit)="submitNewPo()">
+    <div class="form-field full">
+      <label for="po-vendor">Supplier / Vendor</label>
+      <select id="po-vendor" name="vendorId" class="erp-select" [(ngModel)]="newPo.vendorId">
+        @for (v of store.vendors(); track v.id) {
+          <option [value]="v.id">{{ v.name }} ({{ v.paymentTerms }} • {{ v.avgLeadTimeDays }}d lead)</option>
+        }
+      </select>
+    </div>
+    <div class="form-field full">
+      <label for="po-sku">Inventory SKU</label>
+      <select id="po-sku" name="skuId" class="erp-select" [(ngModel)]="newPo.skuId">
+        @for (item of store.inventory(); track item.id) {
+          <option [value]="item.id">{{ item.sku }} — {{ item.name }} ({{ item.unitCost | currency:'USD' }})</option>
+        }
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="po-dest">Destination Warehouse</label>
+      <select id="po-dest" name="destination" class="erp-select" [(ngModel)]="newPo.destination">
+        @for (wh of warehouses; track wh) {
+          <option [value]="wh">{{ wh }}</option>
+        }
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="po-qty">Order Quantity</label>
+      <input id="po-qty" name="quantity" type="number" min="1" class="erp-input num" [(ngModel)]="newPo.quantity" />
+    </div>
+    <div class="form-field">
+      <label for="po-eta">Expected Delivery Date</label>
+      <input id="po-eta" name="expectedDate" type="date" class="erp-input mono" [(ngModel)]="newPo.expectedDate" />
+    </div>
+    <div class="form-field">
+      <label>Estimated Order Total</label>
+      <div class="total-preview num">{{ estimatedOrderTotal() | currency:'USD':'symbol':'1.2-2' }}</div>
+    </div>
+    <div class="form-field full">
+      <label for="po-notes">Requisition Notes</label>
+      <textarea id="po-notes" name="notes" class="erp-textarea" [(ngModel)]="newPo.notes" placeholder="Incoterms, freight instructions, or work order reference..."></textarea>
+    </div>
+
+    <div class="modal-actions full">
+      <button type="button" class="btn btn-secondary" (click)="createModalOpen.set(false)">Cancel</button>
+      <button type="submit" class="btn btn-primary">Submit for Approval</button>
+    </div>
+  </form>
+</app-modal-dialog>

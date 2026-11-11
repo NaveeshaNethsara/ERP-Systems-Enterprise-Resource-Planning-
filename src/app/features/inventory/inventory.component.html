@@ -1,0 +1,317 @@
+<section class="page-header">
+  <div class="page-title-group">
+    <span class="eyebrow">Warehouse &amp; Stock Control</span>
+    <h1>Inventory Management</h1>
+    <p>Monitor real-time bin quantities, valuation, reorder thresholds, and warehouse stock movements.</p>
+  </div>
+  <div class="page-actions">
+    <button type="button" class="btn btn-primary" (click)="createModalOpen.set(true)">
+      <app-erp-icon name="plus" [size]="16" />
+      Register SKU
+    </button>
+  </div>
+</section>
+
+<section class="kpi-grid">
+  <app-kpi-card
+    label="Total Active SKUs"
+    [value]="store.inventoryStats().totalSkus.toString()"
+    icon="inventory"
+    tone="info"
+    [hint]="store.inventoryStats().totalUnits.toLocaleString() + ' total units stored'"
+  />
+  <app-kpi-card
+    label="Inventory Valuation"
+    [value]="(store.inventoryStats().totalValuation | currency:'USD':'symbol':'1.0-0') ?? '$0'"
+    icon="finance"
+    tone="success"
+    trend="FIFO Cost"
+    trendDirection="neutral"
+    hint="Across 4 distribution hubs"
+  />
+  <app-kpi-card
+    label="Low Stock Warnings"
+    [value]="store.inventoryStats().lowStockCount.toString()"
+    icon="alert"
+    [tone]="store.inventoryStats().lowStockCount > 0 ? 'warning' : 'success'"
+    hint="Below safety reorder point"
+  />
+  <app-kpi-card
+    label="Out of Stock SKUs"
+    [value]="store.inventoryStats().outOfStockCount.toString()"
+    icon="alert"
+    [tone]="store.inventoryStats().outOfStockCount > 0 ? 'danger' : 'success'"
+    hint="Requires immediate PO dispatch"
+  />
+</section>
+
+<section class="erp-card">
+  <div class="filter-bar">
+    <div class="filter-controls">
+      <div class="search-input-wrap">
+        <span class="search-icon"><app-erp-icon name="search" [size]="15" /></span>
+        <input
+          type="text"
+          [ngModel]="searchQuery()"
+          (ngModelChange)="searchQuery.set($event)"
+          placeholder="Search SKU code, item name, or bin..."
+        />
+      </div>
+
+      <select class="erp-select" [ngModel]="categoryFilter()" (ngModelChange)="categoryFilter.set($event)" aria-label="Filter by category">
+        <option value="All">All Categories</option>
+        @for (cat of categories; track cat) {
+          <option [value]="cat">{{ cat }}</option>
+        }
+      </select>
+
+      <select class="erp-select" [ngModel]="warehouseFilter()" (ngModelChange)="warehouseFilter.set($event)" aria-label="Filter by warehouse">
+        <option value="All">All Warehouses</option>
+        @for (wh of warehouses; track wh) {
+          <option [value]="wh">{{ wh }}</option>
+        }
+      </select>
+
+      <select class="erp-select" [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event)" aria-label="Filter by stock status">
+        <option value="All">All Health States</option>
+        <option value="Optimal">Optimal</option>
+        <option value="Low Stock">Low Stock</option>
+        <option value="Out of Stock">Out of Stock</option>
+      </select>
+    </div>
+
+    <span class="result-count num">{{ filteredItems().length }} SKUs</span>
+  </div>
+
+  <div class="table-responsive">
+    <table class="erp-table">
+      <thead>
+        <tr>
+          <th scope="col" class="sortable" (click)="toggleSort('sku')">SKU</th>
+          <th scope="col" class="sortable" (click)="toggleSort('name')">Item Description</th>
+          <th scope="col">Warehouse &amp; Bin</th>
+          <th scope="col" class="sortable text-right" (click)="toggleSort('quantity')">On Hand</th>
+          <th scope="col" class="text-right">Reorder Min</th>
+          <th scope="col" class="text-right">Unit Cost</th>
+          <th scope="col" class="sortable text-right" (click)="toggleSort('value')">Valuation</th>
+          <th scope="col">Health</th>
+          <th scope="col" class="text-right">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        @if (filteredItems().length === 0) {
+          <tr>
+            <td colspan="9">
+              <div class="empty-state">
+                <strong>No inventory items match the current filters</strong>
+                <p>Clear search terms or adjust warehouse/category selection.</p>
+              </div>
+            </td>
+          </tr>
+        }
+        @for (item of filteredItems(); track item.id) {
+          @let stockStatus = store.getStockStatus(item);
+          <tr class="clickable" (click)="openDetail(item)">
+            <td><span class="mono sku-code">{{ item.sku }}</span></td>
+            <td>
+              <div class="item-cell">
+                <strong>{{ item.name }}</strong>
+                <span>{{ item.category }}</span>
+              </div>
+            </td>
+            <td>
+              <div class="item-cell">
+                <strong>{{ item.warehouse }}</strong>
+                <span class="mono">Bin {{ item.binLocation }}</span>
+              </div>
+            </td>
+            <td class="text-right num">
+              <strong>{{ item.quantity.toLocaleString() }}</strong>
+              <span class="unit-muted"> {{ item.unit }}</span>
+            </td>
+            <td class="text-right num muted-num">{{ item.reorderPoint.toLocaleString() }}</td>
+            <td class="text-right num">{{ item.unitCost | currency:'USD':'symbol':'1.2-2' }}</td>
+            <td class="text-right num"><strong>{{ (item.quantity * item.unitCost) | currency:'USD':'symbol':'1.0-0' }}</strong></td>
+            <td><app-status-badge [label]="stockStatus" /></td>
+            <td class="text-right" (click)="$event.stopPropagation()">
+              @if (stockStatus !== 'Optimal') {
+                <button type="button" class="btn btn-primary btn-sm" (click)="store.createRestockPo(item.id)">
+                  Restock PO
+                </button>
+              } @else {
+                <button type="button" class="btn btn-secondary btn-sm" (click)="openDetail(item)">
+                  Inspect
+                </button>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- SKU Detail & Stock Ledger Drawer -->
+<app-slide-drawer
+  [open]="selectedItem() !== null"
+  [title]="selectedItem()?.name ?? ''"
+  [subtitle]="selectedItem() ? selectedItem()!.sku + ' • ' + selectedItem()!.warehouse : ''"
+  (closed)="selectedItemId.set(null)"
+>
+  @if (selectedItem(); as item) {
+    @let stockStatus = store.getStockStatus(item);
+    <div class="drawer-section">
+      <div class="drawer-kv-grid">
+        <div class="kv-box">
+          <span>Current Stock</span>
+          <strong class="num">{{ item.quantity.toLocaleString() }} {{ item.unit }}</strong>
+        </div>
+        <div class="kv-box">
+          <span>Reorder Threshold</span>
+          <strong class="num">{{ item.reorderPoint.toLocaleString() }} {{ item.unit }}</strong>
+        </div>
+        <div class="kv-box">
+          <span>Bin Location</span>
+          <strong class="mono">{{ item.binLocation }}</strong>
+        </div>
+        <div class="kv-box">
+          <span>Stock Valuation</span>
+          <strong class="num">{{ (item.quantity * item.unitCost) | currency:'USD':'symbol':'1.2-2' }}</strong>
+        </div>
+      </div>
+
+      <div class="meter-wrap">
+        <div class="meter-head">
+          <span>Buffer Level vs. Safety Target</span>
+          <app-status-badge [label]="stockStatus" />
+        </div>
+        <div class="meter-track">
+          <div class="meter-fill" [class]="'fill-' + statusTone(stockStatus)" [style.width.%]="stockRatioPct(item)"></div>
+        </div>
+        <span class="vendor-caption">Preferred Vendor: <strong>{{ store.getVendorName(item.preferredVendorId) }}</strong></span>
+      </div>
+    </div>
+
+    <div class="drawer-section adjust-card">
+      <h4>Cycle Count / Stock Adjustment</h4>
+      <div class="form-grid">
+        <div class="form-field">
+          <label for="adj-qty">Quantity Delta</label>
+          <input id="adj-qty" type="number" min="1" class="erp-input num" [(ngModel)]="adjustDelta" />
+        </div>
+        <div class="form-field">
+          <label for="adj-ref">Reference Doc</label>
+          <input id="adj-ref" type="text" class="erp-input mono" [(ngModel)]="adjustRef" />
+        </div>
+        <div class="form-field full">
+          <label for="adj-reason">Adjustment Reason</label>
+          <select id="adj-reason" class="erp-select" [(ngModel)]="adjustReason">
+            <option value="Cycle Count Adjustment">Cycle Count Adjustment</option>
+            <option value="Production Floor Issue">Production Floor Issue</option>
+            <option value="Manual Dock Receipt">Manual Dock Receipt</option>
+            <option value="Damaged / Scrap Write-off">Damaged / Scrap Write-off</option>
+          </select>
+        </div>
+      </div>
+      <div class="adjust-actions">
+        <button type="button" class="btn btn-success-soft btn-sm" (click)="applyAdjustment(1)">
+          + Add Stock
+        </button>
+        <button type="button" class="btn btn-danger-soft btn-sm" (click)="applyAdjustment(-1)">
+          - Deduct Stock
+        </button>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <h4>Stock Movement Audit Log</h4>
+      <div class="movement-list">
+        @for (mov of item.movements; track mov.id) {
+          <div class="movement-row">
+            <div>
+              <strong>{{ mov.reason }}</strong>
+              <span class="mov-meta">{{ mov.date }} • <span class="mono">{{ mov.reference }}</span> • {{ mov.actor }}</span>
+            </div>
+            <span class="mov-delta num" [class.positive]="mov.delta > 0" [class.negative]="mov.delta < 0">
+              {{ mov.delta > 0 ? '+' : '' }}{{ mov.delta }}
+            </span>
+          </div>
+        }
+      </div>
+    </div>
+  }
+  @if (selectedItem(); as item) {
+    <ng-container drawer-footer>
+      <button type="button" class="btn btn-secondary" (click)="selectedItemId.set(null)">Close</button>
+      <button type="button" class="btn btn-primary" (click)="store.createRestockPo(item.id)">
+        Raise Replenishment PO
+      </button>
+    </ng-container>
+  }
+</app-slide-drawer>
+
+<!-- Register New SKU Modal -->
+<app-modal-dialog
+  [open]="createModalOpen()"
+  title="Register Inventory SKU"
+  description="Create a new tracked material or finished good across your warehouse network."
+  (closed)="createModalOpen.set(false)"
+>
+  <form class="form-grid" (ngSubmit)="submitNewSku()">
+    <div class="form-field">
+      <label for="sku-code">SKU Code *</label>
+      <input id="sku-code" name="sku" required class="erp-input mono" [(ngModel)]="newSku.sku" placeholder="e.g. SKU-3120" />
+    </div>
+    <div class="form-field">
+      <label for="sku-bin">Warehouse Bin</label>
+      <input id="sku-bin" name="binLocation" class="erp-input mono" [(ngModel)]="newSku.binLocation" />
+    </div>
+    <div class="form-field full">
+      <label for="sku-name">Item Name *</label>
+      <input id="sku-name" name="name" required class="erp-input" [(ngModel)]="newSku.name" placeholder="e.g. Brushless Servo Drive 48V" />
+    </div>
+    <div class="form-field">
+      <label for="sku-cat">Category</label>
+      <select id="sku-cat" name="category" class="erp-select" [(ngModel)]="newSku.category">
+        @for (cat of categories; track cat) {
+          <option [value]="cat">{{ cat }}</option>
+        }
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="sku-wh">Warehouse</label>
+      <select id="sku-wh" name="warehouse" class="erp-select" [(ngModel)]="newSku.warehouse">
+        @for (wh of warehouses; track wh) {
+          <option [value]="wh">{{ wh }}</option>
+        }
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="sku-qty">Initial Quantity</label>
+      <input id="sku-qty" name="quantity" type="number" min="0" class="erp-input num" [(ngModel)]="newSku.quantity" />
+    </div>
+    <div class="form-field">
+      <label for="sku-min">Reorder Point</label>
+      <input id="sku-min" name="reorderPoint" type="number" min="1" class="erp-input num" [(ngModel)]="newSku.reorderPoint" />
+    </div>
+    <div class="form-field">
+      <label for="sku-cost">Unit Cost (USD)</label>
+      <input id="sku-cost" name="unitCost" type="number" min="0.01" step="0.01" class="erp-input num" [(ngModel)]="newSku.unitCost" />
+    </div>
+    <div class="form-field">
+      <label for="sku-vendor">Preferred Vendor</label>
+      <select id="sku-vendor" name="vendor" class="erp-select" [(ngModel)]="newSku.preferredVendorId">
+        @for (v of store.vendors(); track v.id) {
+          <option [value]="v.id">{{ v.name }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="modal-actions full">
+      <button type="button" class="btn btn-secondary" (click)="createModalOpen.set(false)">Cancel</button>
+      <button type="submit" class="btn btn-primary" [disabled]="!newSku.sku.trim() || !newSku.name.trim()">
+        Save SKU
+      </button>
+    </div>
+  </form>
+</app-modal-dialog>

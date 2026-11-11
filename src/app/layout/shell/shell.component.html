@@ -1,0 +1,141 @@
+<div class="erp-shell" [class.sidebar-collapsed]="sidebarCollapsed()">
+  @if (mobileMenuOpen()) {
+    <div class="mobile-backdrop" (click)="closeMobileNav()" role="presentation"></div>
+  }
+
+  <aside class="erp-sidebar" [class.mobile-open]="mobileMenuOpen()" aria-label="Primary ERP Navigation">
+    <div class="sidebar-brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <rect x="2" y="2" width="20" height="20" rx="5" fill="#2563EB" />
+          <path d="M7 15.5V8.5L12 12L17 8.5V15.5" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      @if (!sidebarCollapsed()) {
+        <div class="brand-text">
+          <strong>MERIDIAN</strong>
+          <span>Enterprise Suite</span>
+        </div>
+      }
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">
+        @if (!sidebarCollapsed()) {
+          <span>Operations</span>
+        }
+      </div>
+
+      @for (item of navItems; track item.route) {
+        <a
+          [routerLink]="item.route"
+          routerLinkActive="active"
+          class="nav-link"
+          (click)="closeMobileNav()"
+          [title]="sidebarCollapsed() ? item.label : ''"
+        >
+          <span class="nav-icon">
+            <app-erp-icon [name]="item.icon" [size]="18" />
+          </span>
+          @if (!sidebarCollapsed()) {
+            <span class="nav-label">{{ item.label }}</span>
+            @if (item.badge && item.badge() > 0) {
+              <span class="nav-badge" [class]="'nav-badge badge-' + (item.badgeTone ?? 'info')">
+                {{ item.badge() }}
+              </span>
+            }
+          }
+        </a>
+      }
+    </nav>
+
+    <div class="sidebar-footer">
+      @if (!sidebarCollapsed()) {
+        <div class="fiscal-pill">
+          <span class="fiscal-dot"></span>
+          <span>FY 2026 • Period 11 Open</span>
+        </div>
+      }
+      <button
+        type="button"
+        class="collapse-btn"
+        (click)="sidebarCollapsed.set(!sidebarCollapsed())"
+        [attr.aria-label]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+      >
+        <app-erp-icon [name]="sidebarCollapsed() ? 'chevron-right' : 'chevron-left'" [size]="16" />
+        @if (!sidebarCollapsed()) {
+          <span>Collapse</span>
+        }
+      </button>
+    </div>
+  </aside>
+
+  <div class="erp-main-column">
+    <header class="erp-topbar">
+      <div class="topbar-left">
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm mobile-menu-btn"
+          (click)="mobileMenuOpen.set(!mobileMenuOpen())"
+          aria-label="Toggle navigation menu"
+        >
+          <app-erp-icon name="menu" [size]="18" />
+        </button>
+
+        <button
+          type="button"
+          class="entity-switcher"
+          (click)="toggleEntity()"
+          title="Switch legal reporting entity"
+        >
+          <app-erp-icon name="building" [size]="15" />
+          <span>{{ entityLabel() }}</span>
+        </button>
+      </div>
+
+      <div class="topbar-right">
+        <button
+          type="button"
+          class="global-search-trigger"
+          (click)="store.commandPaletteOpen.set(true)"
+        >
+          <app-erp-icon name="search" [size]="15" />
+          <span class="search-placeholder">Search SKUs, POs, staff, invoices...</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+
+        @if (store.pendingAttentionCount() > 0) {
+          <a routerLink="/dashboard" class="attention-pill" title="Pending approvals & operational exceptions">
+            <app-erp-icon name="alert" [size]="14" />
+            <span class="num">{{ store.pendingAttentionCount() }}</span>
+          </a>
+        }
+
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm reset-btn"
+          (click)="store.resetDemoData()"
+          title="Restore default demo dataset"
+        >
+          <app-erp-icon name="refresh" [size]="14" />
+          <span class="hide-sm">Reset Demo</span>
+        </button>
+
+        <div class="user-chip">
+          <span class="avatar">ER</span>
+          <div class="user-meta hide-sm">
+            <strong>E. Rostova</strong>
+            <span>VP Operations</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="erp-content">
+      <router-outlet />
+    </main>
+  </div>
+</div>
+
+<app-command-palette />
+<app-toast-container />

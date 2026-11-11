@@ -1,0 +1,241 @@
+<section class="page-header">
+  <div class="page-title-group">
+    <span class="eyebrow">Executive Command Center</span>
+    <h1>Operations Overview</h1>
+    <p>Unified live telemetry across inventory, workforce, ledger accounting, procurement, and freight.</p>
+  </div>
+  <div class="page-actions">
+    <a routerLink="/procurement" class="btn btn-secondary">
+      <app-erp-icon name="procurement" [size]="15" />
+      Review POs ({{ store.procurementStats().pendingApprovalsCount }})
+    </a>
+    <a routerLink="/finance" class="btn btn-primary">
+      <app-erp-icon name="finance" [size]="15" />
+      Open General Ledger
+    </a>
+  </div>
+</section>
+
+<section class="kpi-grid">
+  <app-kpi-card
+    label="Inventory Valuation"
+    [value]="(store.inventoryStats().totalValuation | currency:'USD':'symbol':'1.0-0') ?? '$0'"
+    icon="inventory"
+    [tone]="store.inventoryStats().alertCount > 0 ? 'warning' : 'success'"
+    [trend]="store.inventoryStats().alertCount + ' alerts'"
+    [trendDirection]="store.inventoryStats().alertCount > 0 ? 'down' : 'up'"
+    [hint]="store.inventoryStats().totalSkus + ' active SKUs'"
+  />
+  <app-kpi-card
+    label="Cash on Hand (GL 1010)"
+    [value]="(store.financeStats().cashOnHand | currency:'USD':'symbol':'1.0-0') ?? '$0'"
+    icon="finance"
+    tone="success"
+    [trend]="store.financeStats().netMarginPct + '% margin'"
+    trendDirection="up"
+    [hint]="'AR ' + ((store.financeStats().accountsReceivable | currency:'USD':'symbol':'1.0-0') ?? '$0')"
+  />
+  <app-kpi-card
+    label="Open PO Commitments"
+    [value]="(store.procurementStats().openPoValue | currency:'USD':'symbol':'1.0-0') ?? '$0'"
+    icon="procurement"
+    tone="info"
+    [trend]="store.procurementStats().pendingApprovalsCount + ' awaiting sign-off'"
+    trendDirection="neutral"
+    [hint]="store.procurementStats().activeVendorsCount + ' approved vendors'"
+  />
+  <app-kpi-card
+    label="On-Time Freight Rate"
+    [value]="(store.supplyChainStats().onTimeRatePct | number:'1.1-1') + '%'"
+    icon="supply-chain"
+    [tone]="store.supplyChainStats().delayedCount > 0 ? 'warning' : 'success'"
+    [trend]="store.supplyChainStats().delayedCount + ' exception'"
+    [trendDirection]="store.supplyChainStats().delayedCount > 0 ? 'down' : 'up'"
+    [hint]="store.supplyChainStats().activeShipmentsCount + ' active shipments'"
+  />
+</section>
+
+<div class="dashboard-grid">
+  <!-- 6-Month P&L Performance Chart -->
+  <article class="erp-card chart-card">
+    <div class="erp-card-header">
+      <div>
+        <h2>Revenue vs. Operating Expense (6 Months)</h2>
+        <div class="card-subtitle">Hover any fiscal month to inspect net operating cash margin</div>
+      </div>
+      <div class="chart-legend">
+        <span class="legend-item"><i class="swatch rev"></i>Revenue</span>
+        <span class="legend-item"><i class="swatch exp"></i>Expenses</span>
+      </div>
+    </div>
+    <div class="erp-card-body">
+      @if (activeChartPoint(); as pt) {
+        <div class="chart-summary-strip">
+          <div>
+            <span class="strip-label">Selected Month</span>
+            <strong class="strip-val">{{ pt.month }} 2026</strong>
+          </div>
+          <div>
+            <span class="strip-label">Revenue</span>
+            <strong class="strip-val num rev-text">{{ pt.revenue | currency:'USD':'symbol':'1.0-0' }}</strong>
+          </div>
+          <div>
+            <span class="strip-label">Operating Expense</span>
+            <strong class="strip-val num">{{ pt.expenses | currency:'USD':'symbol':'1.0-0' }}</strong>
+          </div>
+          <div>
+            <span class="strip-label">Operating Profit</span>
+            <strong class="strip-val num profit-text">{{ (pt.revenue - pt.expenses) | currency:'USD':'symbol':'1.0-0' }}</strong>
+          </div>
+        </div>
+      }
+
+      <div class="bar-chart" role="img" aria-label="Monthly Revenue vs Operating Expenses Bar Chart">
+        @for (pt of store.monthlyFinancials(); track pt.month; let i = $index) {
+          <div
+            class="month-col"
+            [class.selected]="hoveredMonthIdx() === i || (hoveredMonthIdx() === null && i === store.monthlyFinancials().length - 1)"
+            (mouseenter)="hoveredMonthIdx.set(i)"
+            (mouseleave)="hoveredMonthIdx.set(null)"
+          >
+            <div class="bars-pair">
+              <div class="bar bar-rev" [style.height.%]="barHeightPct(pt.revenue)"></div>
+              <div class="bar bar-exp" [style.height.%]="barHeightPct(pt.expenses)"></div>
+            </div>
+            <span class="month-label">{{ pt.month }}</span>
+          </div>
+        }
+      </div>
+    </div>
+  </article>
+
+  <!-- Pending Approvals Queue (Cross-Module Procurement + HR) -->
+  <article class="erp-card">
+    <div class="erp-card-header">
+      <div>
+        <h2>Pending Sign-Off Queue</h2>
+        <div class="card-subtitle">Purchase requisitions &amp; workforce leave approvals</div>
+      </div>
+      <span class="count-pill num">{{ pendingPos().length + pendingLeaves().length }}</span>
+    </div>
+    <div class="queue-list">
+      @if (pendingPos().length === 0 && pendingLeaves().length === 0) {
+        <div class="empty-state">
+          <strong>All approvals cleared</strong>
+          <p>No pending purchase orders or leave requests require action.</p>
+        </div>
+      }
+
+      @for (po of pendingPos(); track po.id) {
+        <div class="queue-row">
+          <div class="queue-info">
+            <div class="queue-top">
+              <span class="mono">{{ po.poNumber }}</span>
+              <app-status-badge label="Pending Approval" />
+            </div>
+            <strong>{{ po.vendorName }}</strong>
+            <span class="queue-meta">{{ po.destination }} • <span class="num">{{ po.totalAmount | currency:'USD':'symbol':'1.0-0' }}</span></span>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" (click)="store.advancePurchaseOrder(po.id, 'Approved')">
+            Approve PO
+          </button>
+        </div>
+      }
+
+      @for (lv of pendingLeaves(); track lv.id) {
+        <div class="queue-row">
+          <div class="queue-info">
+            <div class="queue-top">
+              <span class="mono">{{ lv.leaveType }}</span>
+              <app-status-badge label="Pending" />
+            </div>
+            <strong>{{ lv.employeeName }}</strong>
+            <span class="queue-meta">{{ lv.department }} • {{ lv.startDate }} ({{ lv.days }}d)</span>
+          </div>
+          <div class="btn-pair">
+            <button type="button" class="btn btn-success-soft btn-sm" (click)="store.resolveLeaveRequest(lv.id, 'Approved')">
+              Approve
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" (click)="store.resolveLeaveRequest(lv.id, 'Declined')">
+              Decline
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  </article>
+
+  <!-- Low Stock Reorder Alerts -->
+  <article class="erp-card">
+    <div class="erp-card-header">
+      <div>
+        <h2>Inventory Reorder Alerts</h2>
+        <div class="card-subtitle">SKUs at or below safety reorder threshold</div>
+      </div>
+      <a routerLink="/inventory" class="link-action">All SKUs</a>
+    </div>
+    <div class="queue-list">
+      @if (store.inventoryStats().alerts.length === 0) {
+        <div class="empty-state">
+          <strong>All stock levels optimal</strong>
+          <p>Every SKU is above its safety reorder point.</p>
+        </div>
+      }
+      @for (item of store.inventoryStats().alerts; track item.id) {
+        <div class="queue-row">
+          <div class="queue-info">
+            <div class="queue-top">
+              <span class="mono">{{ item.sku }}</span>
+              <app-status-badge [label]="store.getStockStatus(item)" />
+            </div>
+            <strong>{{ item.name }}</strong>
+            <span class="queue-meta num">
+              {{ item.warehouse }} • {{ item.quantity }} / {{ item.reorderPoint }} {{ item.unit }} min
+            </span>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" (click)="store.createRestockPo(item.id)">
+            Raise PO
+          </button>
+        </div>
+      }
+    </div>
+  </article>
+
+  <!-- Workforce & Supply Chain Snapshot -->
+  <article class="erp-card">
+    <div class="erp-card-header">
+      <div>
+        <h2>Active Freight &amp; Workforce Pulse</h2>
+        <div class="card-subtitle">Live inbound lanes and payroll commitment</div>
+      </div>
+      <a routerLink="/supply-chain" class="link-action">Track All</a>
+    </div>
+    <div class="erp-card-body pulse-body">
+      <div class="pulse-metrics">
+        <div class="pulse-box">
+          <span>Active Workforce</span>
+          <strong class="num">{{ store.employeeStats().activeCount }} / {{ store.employeeStats().totalHeadcount }}</strong>
+        </div>
+        <div class="pulse-box">
+          <span>Monthly Payroll Run</span>
+          <strong class="num">{{ store.employeeStats().monthlyPayroll | currency:'USD':'symbol':'1.0-0' }}</strong>
+        </div>
+      </div>
+
+      <div class="freight-mini-list">
+        @for (shp of activeShipments(); track shp.id) {
+          <div class="freight-mini-row">
+            <div>
+              <div class="freight-top">
+                <span class="mono">{{ shp.trackingId }}</span>
+                <span class="carrier-name">{{ shp.carrier }}</span>
+              </div>
+              <div class="route-line">{{ shp.origin }} → {{ shp.destination }}</div>
+            </div>
+            <app-status-badge [label]="shp.delayed ? 'Delayed' : shp.stage" />
+          </div>
+        }
+      </div>
+    </div>
+  </article>
+</div>

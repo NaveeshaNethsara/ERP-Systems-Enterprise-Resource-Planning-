@@ -1,0 +1,350 @@
+<section class="page-header">
+  <div class="page-title-group">
+    <span class="eyebrow">Human Capital &amp; Payroll</span>
+    <h1>Employee Management</h1>
+    <p>Manage organizational directory, department cost centers, PTO approvals, and payroll commitments.</p>
+  </div>
+  <div class="page-actions">
+    <button type="button" class="btn btn-primary" (click)="onboardModalOpen.set(true)">
+      <app-erp-icon name="plus" [size]="16" />
+      Onboard Employee
+    </button>
+  </div>
+</section>
+
+<section class="kpi-grid">
+  <app-kpi-card
+    label="Total Headcount"
+    [value]="store.employeeStats().totalHeadcount.toString()"
+    icon="employees"
+    tone="info"
+    [hint]="store.employeeStats().activeCount + ' active • ' + store.employeeStats().onLeaveCount + ' on leave'"
+  />
+  <app-kpi-card
+    label="Monthly Payroll Run"
+    [value]="(store.employeeStats().monthlyPayroll | currency:'USD':'symbol':'1.0-0') ?? '$0'"
+    icon="finance"
+    tone="neutral"
+    trend="Bi-weekly Cycle"
+    trendDirection="neutral"
+    hint="Gross base compensation"
+  />
+  <app-kpi-card
+    label="Pending Leave Requests"
+    [value]="store.employeeStats().pendingLeaveCount.toString()"
+    icon="clock"
+    [tone]="store.employeeStats().pendingLeaveCount > 0 ? 'warning' : 'success'"
+    hint="Awaiting manager approval"
+  />
+  <app-kpi-card
+    label="Operating Locations"
+    value="5 Sites"
+    icon="building"
+    tone="success"
+    hint="HQ, Chicago, Austin, Rotterdam, SG"
+  />
+</section>
+
+<nav class="erp-tabs" aria-label="Employee module views">
+  <button type="button" class="erp-tab" [class.active]="activeTab() === 'directory'" (click)="activeTab.set('directory')">
+    Directory
+    <span class="tab-count num">{{ store.employees().length }}</span>
+  </button>
+  <button type="button" class="erp-tab" [class.active]="activeTab() === 'leave'" (click)="activeTab.set('leave')">
+    Leave &amp; Attendance
+    <span class="tab-count num">{{ store.employeeStats().pendingLeaveCount }}</span>
+  </button>
+  <button type="button" class="erp-tab" [class.active]="activeTab() === 'departments'" (click)="activeTab.set('departments')">
+    Departments &amp; Cost Centers
+  </button>
+</nav>
+
+@if (activeTab() === 'directory') {
+  <section class="erp-card">
+    <div class="filter-bar">
+      <div class="filter-controls">
+        <div class="search-input-wrap">
+          <span class="search-icon"><app-erp-icon name="search" [size]="15" /></span>
+          <input
+            type="text"
+            [ngModel]="searchQuery()"
+            (ngModelChange)="searchQuery.set($event)"
+            placeholder="Search name, EMP code, or role..."
+          />
+        </div>
+
+        <select class="erp-select" [ngModel]="departmentFilter()" (ngModelChange)="departmentFilter.set($event)" aria-label="Filter by department">
+          <option value="All">All Departments</option>
+          @for (dept of departments; track dept) {
+            <option [value]="dept">{{ dept }}</option>
+          }
+        </select>
+
+        <select class="erp-select" [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event)" aria-label="Filter by status">
+          <option value="All">All Statuses</option>
+          @for (st of statuses; track st) {
+            <option [value]="st">{{ st }}</option>
+          }
+        </select>
+      </div>
+      <span class="result-count num">{{ filteredEmployees().length }} staff</span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th scope="col">Employee</th>
+            <th scope="col">ID</th>
+            <th scope="col">Department &amp; Cost Center</th>
+            <th scope="col">Site</th>
+            <th scope="col" class="text-right">Base Salary</th>
+            <th scope="col" class="text-right">PTO Bal</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (filteredEmployees().length === 0) {
+            <tr>
+              <td colspan="7">
+                <div class="empty-state">
+                  <strong>No employees match filters</strong>
+                  <p>Adjust your search query or department filter.</p>
+                </div>
+              </td>
+            </tr>
+          }
+          @for (emp of filteredEmployees(); track emp.id) {
+            <tr class="clickable" (click)="selectedEmployeeId.set(emp.id)">
+              <td>
+                <div class="emp-cell">
+                  <span class="emp-avatar">{{ initials(emp.name) }}</span>
+                  <div>
+                    <strong>{{ emp.name }}</strong>
+                    <span>{{ emp.role }}</span>
+                  </div>
+                </div>
+              </td>
+              <td><span class="mono">{{ emp.employeeCode }}</span></td>
+              <td>
+                <div class="cell-stack">
+                  <strong>{{ emp.department }}</strong>
+                  <span class="mono">{{ emp.costCenter }}</span>
+                </div>
+              </td>
+              <td>{{ emp.location }}</td>
+              <td class="text-right num">{{ emp.baseSalary | currency:'USD':'symbol':'1.0-0' }}</td>
+              <td class="text-right num">{{ emp.ptoBalanceDays }}d</td>
+              <td><app-status-badge [label]="emp.status" /></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+}
+
+@if (activeTab() === 'leave') {
+  <section class="erp-card">
+    <div class="erp-card-header">
+      <div>
+        <h2>Time-Off &amp; Training Approval Queue</h2>
+        <div class="card-subtitle">Approving PTO deducts days from employee balance and updates active roster status</div>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="erp-table">
+        <thead>
+          <tr>
+            <th scope="col">Employee</th>
+            <th scope="col">Department</th>
+            <th scope="col">Leave Type</th>
+            <th scope="col">Dates</th>
+            <th scope="col" class="text-right">Days</th>
+            <th scope="col">Reason</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="text-right">Decision</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (req of store.leaveRequests(); track req.id) {
+            <tr>
+              <td><strong>{{ req.employeeName }}</strong></td>
+              <td>{{ req.department }}</td>
+              <td>{{ req.leaveType }}</td>
+              <td class="mono">{{ req.startDate }} → {{ req.endDate }}</td>
+              <td class="text-right num">{{ req.days }}d</td>
+              <td>{{ req.reason }}</td>
+              <td><app-status-badge [label]="req.status" /></td>
+              <td class="text-right">
+                @if (req.status === 'Pending') {
+                  <div class="action-pair">
+                    <button type="button" class="btn btn-success-soft btn-sm" (click)="store.resolveLeaveRequest(req.id, 'Approved')">
+                      Approve
+                    </button>
+                    <button type="button" class="btn btn-danger-soft btn-sm" (click)="store.resolveLeaveRequest(req.id, 'Declined')">
+                      Decline
+                    </button>
+                  </div>
+                } @else {
+                  <span class="resolved-muted">Processed</span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+}
+
+@if (activeTab() === 'departments') {
+  <section class="dept-grid">
+    @for (dept of departmentBreakdown(); track dept.department) {
+      <article class="erp-card dept-card">
+        <div class="dept-top">
+          <h3>{{ dept.department }}</h3>
+          <span class="dept-share num">{{ dept.sharePct }}% payroll</span>
+        </div>
+        <div class="dept-metrics">
+          <div>
+            <span>Headcount</span>
+            <strong class="num">{{ dept.headcount }} staff</strong>
+          </div>
+          <div>
+            <span>Monthly Cost</span>
+            <strong class="num">{{ dept.monthlyPayroll | currency:'USD':'symbol':'1.0-0' }}</strong>
+          </div>
+        </div>
+        <div class="dept-bar">
+          <div class="dept-fill" [style.width.%]="dept.sharePct"></div>
+        </div>
+      </article>
+    }
+  </section>
+}
+
+<!-- Employee Profile Drawer -->
+<app-slide-drawer
+  [open]="selectedEmployee() !== null"
+  [title]="selectedEmployee()?.name ?? ''"
+  [subtitle]="selectedEmployee() ? selectedEmployee()!.employeeCode + ' • ' + selectedEmployee()!.department : ''"
+  (closed)="selectedEmployeeId.set(null)"
+>
+  @if (selectedEmployee(); as emp) {
+    <div class="profile-banner">
+      <span class="emp-avatar lg">{{ initials(emp.name) }}</span>
+      <div>
+        <strong>{{ emp.role }}</strong>
+        <span>{{ emp.email }} • {{ emp.phone }}</span>
+      </div>
+    </div>
+
+    <div class="drawer-kv-grid">
+      <div class="kv-box">
+        <span>Site Location</span>
+        <strong>{{ emp.location }}</strong>
+      </div>
+      <div class="kv-box">
+        <span>Reports To</span>
+        <strong>{{ emp.manager }}</strong>
+      </div>
+      <div class="kv-box">
+        <span>Annual Base Salary</span>
+        <strong class="num">{{ emp.baseSalary | currency:'USD':'symbol':'1.0-0' }}</strong>
+      </div>
+      <div class="kv-box">
+        <span>Monthly Gross</span>
+        <strong class="num">{{ (emp.baseSalary / 12) | currency:'USD':'symbol':'1.0-0' }}</strong>
+      </div>
+      <div class="kv-box">
+        <span>Cost Center</span>
+        <strong class="mono">{{ emp.costCenter }}</strong>
+      </div>
+      <div class="kv-box">
+        <span>Remaining PTO</span>
+        <strong class="num">{{ emp.ptoBalanceDays }} days</strong>
+      </div>
+    </div>
+
+    <div class="status-control-box">
+      <label for="emp-status-select">Employment Status</label>
+      <div class="status-row">
+        <select
+          id="emp-status-select"
+          class="erp-select"
+          [ngModel]="emp.status"
+          (ngModelChange)="store.updateEmployeeStatus(emp.id, $event)"
+        >
+          @for (st of statuses; track st) {
+            <option [value]="st">{{ st }}</option>
+          }
+        </select>
+        <app-status-badge [label]="emp.status" />
+      </div>
+      <span class="hire-meta">Hire Date: <span class="mono">{{ emp.hireDate }}</span></span>
+    </div>
+  }
+  @if (selectedEmployee()) {
+    <ng-container drawer-footer>
+      <button type="button" class="btn btn-secondary" (click)="selectedEmployeeId.set(null)">Close</button>
+    </ng-container>
+  }
+</app-slide-drawer>
+
+<!-- Onboard Employee Modal -->
+<app-modal-dialog
+  [open]="onboardModalOpen()"
+  title="Onboard Employee"
+  description="Create a new employee record and assign department cost center."
+  (closed)="onboardModalOpen.set(false)"
+>
+  <form class="form-grid" (ngSubmit)="submitNewEmployee()">
+    <div class="form-field">
+      <label for="emp-name">Full Name *</label>
+      <input id="emp-name" name="name" required class="erp-input" [(ngModel)]="newEmployee.name" placeholder="e.g. Jordan Hayes" />
+    </div>
+    <div class="form-field">
+      <label for="emp-role">Job Title *</label>
+      <input id="emp-role" name="role" required class="erp-input" [(ngModel)]="newEmployee.role" placeholder="e.g. Robotics Technician" />
+    </div>
+    <div class="form-field">
+      <label for="emp-email">Work Email</label>
+      <input id="emp-email" name="email" type="email" class="erp-input" [(ngModel)]="newEmployee.email" placeholder="j.hayes@meridian-erp.io" />
+    </div>
+    <div class="form-field">
+      <label for="emp-dept">Department</label>
+      <select id="emp-dept" name="department" class="erp-select" [(ngModel)]="newEmployee.department">
+        @for (dept of departments; track dept) {
+          <option [value]="dept">{{ dept }}</option>
+        }
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="emp-loc">Site Location</label>
+      <select id="emp-loc" name="location" class="erp-select" [(ngModel)]="newEmployee.location">
+        @for (loc of locations; track loc) {
+          <option [value]="loc">{{ loc }}</option>
+        }
+      </select>
+    </div>
+    <div class="form-field">
+      <label for="emp-salary">Annual Base Salary (USD)</label>
+      <input id="emp-salary" name="baseSalary" type="number" min="30000" step="1000" class="erp-input num" [(ngModel)]="newEmployee.baseSalary" />
+    </div>
+    <div class="form-field">
+      <label for="emp-mgr">Manager</label>
+      <input id="emp-mgr" name="manager" class="erp-input" [(ngModel)]="newEmployee.manager" />
+    </div>
+    <div class="form-field">
+      <label for="emp-cc">Cost Center</label>
+      <input id="emp-cc" name="costCenter" class="erp-input mono" [(ngModel)]="newEmployee.costCenter" />
+    </div>
+    <div class="modal-actions full">
+      <button type="button" class="btn btn-secondary" (click)="onboardModalOpen.set(false)">Cancel</button>
+      <button type="submit" class="btn btn-primary" [disabled]="!newEmployee.name.trim() || !newEmployee.role.trim()">
+        Complete Onboarding
+      </button>
+    </div>
+  </form>
+</app-modal-dialog>
